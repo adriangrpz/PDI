@@ -68,10 +68,12 @@ make ex && ./dist/Editor
 ```
 
 Así, el programa inicia con tres opciones en la parte superior,
-donde la primera nos permite elegir una imagen desde el almacenamiento
-y posteriormente en la segunda opción despliega el menú para especificar
-el letrero de la marca de agua, las coordenadas, la transparencia y el tamaño
-de letra del letrero, para posteriormente procesarlo.
+donde la primera nos permite elegir una imagen desde el almacenamiento,
+la segunda realiza el procesamiento de la imagen en blanco y negro
+y la tercera en color, creando imágenes hechas de si mismas y guardándolas
+en out.jpg. El proceso puede tardar un tiempo, especialmente a color,
+donde si el programa se ejecuta desde consola, se puede ver el
+avance en la consola.
 
 Finalmente, la imagen generada puede guardarse en el almacenamiento
 con la pestaña File > Save.

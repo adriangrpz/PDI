@@ -3,10 +3,9 @@ import math
 from PIL import *
 from PIL import ImageTk
 from PIL import Image as PImage
-from PIL import ImageFont
-from PIL import ImageDraw
 from tkinter import * 
 from tkinter import filedialog
+from tkinter import messagebox
 
 from Image import *
 from Utilities import *
@@ -30,6 +29,7 @@ class Interface(Frame):
         self.gridSize = 5, 5
         self.outPixelsSize = 10, 10
         self.criteria = 'Distancia euclideana'
+        self.alpha = 50
 
     """
     Function to create the window's toolbar, adding an option for each
@@ -39,12 +39,13 @@ class Interface(Frame):
         toolBar = Menu(self)
 
         fileMenu = Menu(toolBar, tearoff=0)
-        fileMenu.add_command(label='Open',          command=self.loadImg)
-        fileMenu.add_command(label='Save',          command=self.saveImg)
-        toolBar.add_cascade(label='File',           menu=fileMenu)
+        fileMenu.add_command(label='Abrir',          command=self.loadImg)
+        fileMenu.add_command(label='Guardar',          command=self.saveImg)
+        toolBar.add_cascade(label='Archivo',           menu=fileMenu)
 
-        toolBar.add_command(label='Fotomorsaico',   command=self.processMorsaic)
-        toolBar.add_command(label='Exit',           command=self.exit)
+        toolBar.add_command(label='Fotomorsaico',            command=self.processMorsaic)
+        toolBar.add_command(label='Blending al resultado',   command=self.blendResult)
+        toolBar.add_command(label='Salir',                    command=self.exit)
 
         self.root.config(menu=toolBar)
 
@@ -59,7 +60,7 @@ class Interface(Frame):
             tags='bg_img')
         
     """
-    Function that asks the user for a custom text and the size of the squares.
+    Function that asks the user for the criteria to apply and the size of the squares.
     """
     def processMorsaic(self):
         self.top = Toplevel()
@@ -102,6 +103,56 @@ class Interface(Frame):
 
         self.button = Button(self.top, textvariable=self.buttontext, command=lambda: self.processMorsaicConfirm(x1Val, y1Val, x2Val, y2Val, criteriaString)).pack()
 
+    def blendResult(self):
+        self.top = Toplevel()
+
+        Label(self.top, text= "Porcentaje").pack()
+
+        alphaValue = DoubleVar()
+        self.scale = Scale(self.top, variable = alphaValue, orient='horizontal')
+        self.scale.set(self.alpha)
+        self.scale.pack(anchor=CENTER)
+
+        self.buttontext = StringVar()
+        self.buttontext.set("Apply")
+
+        self.button = Button(self.top, textvariable=self.buttontext, command=lambda: self.blendConfirm(alphaValue)).pack()
+
+    def blendConfirm(self, alphaValue):
+        alpha = int(alphaValue.get())
+        self.alpha = alpha
+        alpha = alpha / 100
+
+        newImg = self.blend(self.image.original, self.modified, alpha)
+        self.update(newImg)
+        self.top.destroy()
+
+    def blend(self, original, modified, alpha):
+        pixels = modified.load()
+
+        newSizeX = (int) (original.size[0] / self.gridSize[0]) * self.outPixelsSize[0]
+        newSizeY = (int) (original.size[1] / self.gridSize[1]) * self.outPixelsSize[1]
+
+        newSize = newSizeX, newSizeY
+        
+        toBlend = original.resize(newSize)
+
+        rgbOriginal = toBlend.convert('RGB')
+        rgbModified = modified.convert('RGB')
+
+        for col in range(newSizeX):
+            for row in range(newSizeY):
+                rO, gO, bO = rgbOriginal.getpixel((col, row))
+                rM, gM, bM = rgbModified.getpixel((col, row))
+
+                rF = int(rO * alpha + rM * (1 - alpha))
+                gF = int(gO * alpha + gM * (1 - alpha))
+                bF = int(bO * alpha + bM * (1 - alpha))
+                pixels[col, row] = (rF, gF, bF)
+
+        modified.save(f'out2.jpg')
+        return modified
+
     def processMorsaicConfirm(self, x1Val, y1Val, x2Val, y2Val, criteriaVal):
         x1 = None
         x2 = None
@@ -141,8 +192,7 @@ class Interface(Frame):
         toModify = self.image.modified
 
         rgbColors = toModify.convert('RGB')
-        # pixels = newImg.load()
-
+        
         corners = getMosaicCorners(toModify.size, self.gridSize[0], self.gridSize[1])
 
         newSizeX = (int) (newImg.size[0] / self.gridSize[0]) * self.outPixelsSize[0]
@@ -176,17 +226,6 @@ class Interface(Frame):
             gAvg = gAvg // count
             bAvg = bAvg // count
 
-            # newImg = self.image.original
-            # toModify = self.image.modified
-
-            # rgbColors = toModify.convert('RGB')
-            # pixels = newImg.load()
-            
-            # for col in range(toModify.size[0]):
-            #     for row in range(toModify.size[1]):
-            #         r, g, b = rgbColors.getpixel((col, row))
-            #         pixels[col, row] = (r & rAvg, g & gAvg, b & bAvg)
-
             foundFilename = self.findMorsaicImage(rAvg, gAvg, bAvg)
 
             foundImage = PImage.open(f'./from/{foundFilename}')
@@ -203,7 +242,7 @@ class Interface(Frame):
                 posY += self.outPixelsSize[1]
 
         outputImage.save(f'out.jpg')
-        # self.imagesIndex.close()
+        self.modified = outputImage
         
         return outputImage
 
@@ -312,7 +351,7 @@ class Interface(Frame):
                           ('jpg files','*.jpg')))
 
         if not os.path.isfile(filename):
-            message('Error', 'The file does not exists.')
+            message('Error', 'El archivo no existe.')
             return
 
         self.image = Image(filename)
@@ -340,7 +379,7 @@ class Interface(Frame):
     """
     def saveImg(self):
         if not self.image:
-            message('Error', 'There is no image to save.')
+            self.message('Error', 'Ninguna imagen que guardar.')
             return
 
         filename = filedialog.asksaveasfilename(initialdir = '~/Desktop/', \

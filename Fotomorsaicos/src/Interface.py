@@ -1,5 +1,7 @@
 import os
 import math
+import random
+import itertools
 from PIL import *
 from PIL import ImageTk
 from PIL import Image as PImage
@@ -25,11 +27,12 @@ class Interface(Frame):
         self.pack(fill='both', expand=True)
         self.canvas()
         self.toolbar()
-        self.checkImagesFile()
+        # self.checkImagesFile()
         self.gridSize = 5, 5
         self.outPixelsSize = 10, 10
         self.criteria = 'Distancia euclideana'
         self.alpha = 50
+        self.tenBest = False
 
     """
     Function to create the window's toolbar, adding an option for each
@@ -45,6 +48,7 @@ class Interface(Frame):
 
         toolBar.add_command(label='Fotomorsaico',            command=self.processMorsaic)
         toolBar.add_command(label='Blending al resultado',   command=self.blendResult)
+        toolBar.add_command(label='Crear index de imgs',     command=self.createIndex)
         toolBar.add_command(label='Salir',                    command=self.exit)
 
         self.root.config(menu=toolBar)
@@ -58,6 +62,71 @@ class Interface(Frame):
             anchor='center', \
             image=modified, \
             tags='bg_img')
+    
+    def files(self, path):
+        files = []
+        for file in os.listdir(path):
+            if os.path.isfile(os.path.join(path, file)):
+                files.append(file)
+
+        return files
+
+    def avgRgb(self, image):
+        rgbColors = image.convert('RGB')
+        rAvg = 0
+        gAvg = 0
+        bAvg = 0
+        count = 0
+
+        for col in range(image.size[0]):
+            for row in range(image.size[1]):
+                r, g, b = rgbColors.getpixel((col, row))
+                rAvg += r
+                gAvg += g
+                bAvg += b
+                count += 1
+
+        rAvg = rAvg // count
+        gAvg = gAvg // count
+        bAvg = bAvg // count
+
+        return rAvg, gAvg, bAvg
+
+    def createIndex(self):
+        photosDirectory = filedialog.askdirectory()
+
+        if not os.path.exists(photosDirectory) or not os.path.isdir(photosDirectory):
+            self.message('Error', 'No se eligió una carpeta.')
+            return
+        
+        self.message('Info', 'Se va a crear el index, el proceso puede tardar.\nEl programa informará cuando termine')
+
+        imagesIndexFile = open('images-index', 'w')
+        outText = f'{photosDirectory}\n'
+
+        imagesCount = 0
+        files = self.files(photosDirectory)
+        total = len([x for x in files])
+
+
+        for filename in files:
+            try :
+                fullPath = os.path.join(photosDirectory, filename)
+                rAvg, gAvg, bAvg = self.avgRgb(PImage.open(fullPath))
+            except Exception as exc:
+                pass
+
+            outText += f'{filename} {rAvg} {gAvg} {bAvg}\n'
+            imagesCount += 1
+            percent = '%0.2f' % (imagesCount * 100 / total)
+            print(f'{imagesCount} / {total} - {percent}%', end='\r')
+
+        imagesIndexFile.write(outText)
+        imagesIndexFile.close()
+
+        self.photosDirectory = photosDirectory
+
+        self.message('Info', 'Index creado')
         
     """
     Function that asks the user for the criteria to apply and the size of the squares.
@@ -98,10 +167,13 @@ class Interface(Frame):
         Label(self.top, text="Seleccionar criterio de selección").pack()
         criteriaValue.pack()
 
+        tenBestVal = BooleanVar(value=self.tenBest)
+        Checkbutton(self.top, text="Elegir entre 10 mejores por recuadro", variable=tenBestVal).pack()
+
         self.buttontext = StringVar()
         self.buttontext.set("Apply")
 
-        self.button = Button(self.top, textvariable=self.buttontext, command=lambda: self.processMorsaicConfirm(x1Val, y1Val, x2Val, y2Val, criteriaString)).pack()
+        self.button = Button(self.top, textvariable=self.buttontext, command=lambda: self.processMorsaicConfirm(x1Val, y1Val, x2Val, y2Val, criteriaString, tenBestVal)).pack()
 
     def blendResult(self):
         self.top = Toplevel()
@@ -153,12 +225,13 @@ class Interface(Frame):
         modified.save(f'out2.jpg')
         return modified
 
-    def processMorsaicConfirm(self, x1Val, y1Val, x2Val, y2Val, criteriaVal):
+    def processMorsaicConfirm(self, x1Val, y1Val, x2Val, y2Val, criteriaVal, tenBestVal):
         x1 = None
         x2 = None
         y1 = None
         y2 = None
         criteria = None
+        tenBest = None
         try:
             x1 = x1Val.get()
             x2 = x2Val.get()
@@ -173,21 +246,33 @@ class Interface(Frame):
             y2 = int(y2)
 
             criteria = criteriaVal.get()
+            tenBest = tenBestVal.get()
             if x1 <= 0 or y1 <= 0 or x2 <= 0 or y2 <= 0:
                 raise Exception()
         except Exception as e:
-            self.message('Error', 'The values should be integers.')
+            self.message('Error', 'Los valores pueden ser enteros.')
             return
         self.gridSize = x1, y1
         self.outPixelsSize = x2, y2
 
         self.criteria = criteria
+        self.tenBest = tenBest
+
+        self.message('Info', 'Se va a crear el fotomosaico, el proceso puede tardar.\nEl programa informará cuando termine')
+        self.top.destroy()
 
         newImg = self.processMorsaicFilter()
         self.update(newImg)
-        self.top.destroy()
+
+        self.message('Info', 'Fotomosaico terminado.')
+
 
     def processMorsaicFilter(self):
+
+        if not os.path.isfile('images-index'):
+            self.message('Error', 'El archivo images-index no existe, créalo en la barra superior.')
+            return
+
         newImg = self.image.original
         toModify = self.image.modified
 
@@ -202,10 +287,13 @@ class Interface(Frame):
 
         outputImage = PImage.new('RGB', (newSizeX, newSizeY), (255, 255, 255, 255))
         self.imagesIndex = open('images-index', 'r')
+        self.photosDirectory = self.imagesIndex.readline().replace('\n', '')
         self.imagesIndexLines = self.imagesIndex.readlines()
 
         posX = 0
         posY = 0
+
+        findMorsaicImage = self.findMorsaicImage10 if (self.tenBest) else self.findMorsaicImage
 
         for (i, square) in enumerate(corners):
             xLeft, yLeft, xRight, yRight = square
@@ -226,9 +314,9 @@ class Interface(Frame):
             gAvg = gAvg // count
             bAvg = bAvg // count
 
-            foundFilename = self.findMorsaicImage(rAvg, gAvg, bAvg)
+            foundFilename = findMorsaicImage(rAvg, gAvg, bAvg)
 
-            foundImage = PImage.open(f'./from/{foundFilename}')
+            foundImage = PImage.open(f'{self.photosDirectory}/{foundFilename}')
             foundImage = foundImage.resize(self.outPixelsSize)
             
             outputImage.paste(foundImage, (posX, posY))
@@ -245,6 +333,40 @@ class Interface(Frame):
         self.modified = outputImage
         
         return outputImage
+
+    def findMorsaicImage10(self, rAvg, gAvg, bAvg):
+        min = [float('inf')]  * 10
+        found = [''] * 10
+
+        for line in self.imagesIndexLines:
+            filename, r, g, b = line.split()
+            r = (int) (r)
+            g = (int) (g)
+            b = (int) (b)
+
+            rDiff = (rAvg - r)**2
+            gDiff = (gAvg - g)**2
+            bDiff = (bAvg - b)**2
+
+            if self.criteria == 'Distancia euclideana':
+                delta = math.sqrt(rDiff + gDiff + bDiff)
+            else:
+                rNorm = (r + rAvg)/2
+
+                rTerm = (2 + (rNorm / 256)) * rDiff
+                gTerm = 4 * gDiff
+                bTerm = (2 + ((255 - rNorm) / 256)) * bDiff
+
+                delta = math.sqrt(rTerm + gTerm + bTerm)
+
+            for i, n in enumerate(min):
+                if delta < n:
+                    min[i]   = delta
+                    found[i] = filename
+                    break        
+
+        found = [x for x in found if x != '']
+        return random.choice(found)
 
     def findMorsaicImage(self, rAvg, gAvg, bAvg):
         min = float('inf')
@@ -297,48 +419,6 @@ class Interface(Frame):
             fill='both', \
             expand=True)
 
-    def checkImagesFile(self):
-        if os.path.isfile('images-index'):
-            return
-
-        imagesIndexFile = open('images-index', 'w')
-        outText = ''
-
-        print('Creating index')
-        imagesCount = 0
-        total = len([x for x in os.listdir('from')])
-
-        for filename in os.listdir('from'):
-
-            image = PImage.open(f'./from/{filename}')
-
-            rgbColors = image.convert('RGB')
-            rAvg = 0
-            gAvg = 0
-            bAvg = 0
-            count = 0
-
-            for col in range(image.size[0]):
-                for row in range(image.size[1]):
-                    r, g, b = rgbColors.getpixel((col, row))
-                    rAvg += r
-                    gAvg += g
-                    bAvg += b
-                    count += 1
-
-            rAvg = rAvg // count
-            gAvg = gAvg // count
-            bAvg = bAvg // count
-
-            outText += f'{filename} {rAvg} {gAvg} {bAvg}\n'
-
-            imagesCount += 1
-            percent = '%0.2f' % (imagesCount * 100 / total)
-            print(f'{imagesCount} / {total} - {percent}%', end='\r')
-
-        imagesIndexFile.write(outText)
-        imagesIndexFile.close()
-
     """
     Function that asks the user for a filename and loads
     the image in the canvas.
@@ -351,7 +431,7 @@ class Interface(Frame):
                           ('jpg files','*.jpg')))
 
         if not os.path.isfile(filename):
-            message('Error', 'El archivo no existe.')
+            self.message('Error', 'El archivo no existe.')
             return
 
         self.image = Image(filename)
@@ -387,7 +467,8 @@ class Interface(Frame):
             filetypes = ( ('jpg files','*.jpg'), \
                           ('png files', '.png'), \
                           ('all files', '*.*')))
-        self.toSave.save(filename)
+
+        os.rename('out.jpg', filename)
 
     """
     Function that closes the program.

@@ -4,7 +4,7 @@ block_cipher = None
 
 
 a = Analysis(['src/Editor.py'],
-             pathex=['/home/adrian/fac/2021-2/PDI/Tarea4'],
+             pathex=['/home/adrian/Desktop/otros/PDI/Fotomorsaicos'],
              binaries=[],
              datas=[],
              hiddenimports=['PIL._tkinter_finder'],

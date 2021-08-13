@@ -373,7 +373,12 @@ class Interface(Frame):
         found = ''
 
         for line in self.imagesIndexLines:
-            filename, r, g, b = line.split()
+            try:
+                filename, r, g, b = line.split()
+            except Exception as exc:
+                print('Error en ', filename, ' deteniendo.')
+                os._exit(0)
+                
             r = (int) (r)
             g = (int) (g)
             b = (int) (b)
